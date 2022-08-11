@@ -1,6 +1,14 @@
 # Pizzaria Burgerhouse CLI
 
 ### TODO
+For `order_details()`
+```json
+{"status":"ok","statuscode":200,"data":{"id":"removed this is the session token","statuscode":"200","status":"PENDING","completed":0,"message":"","timestamp":"20220811185227"}}
+```
+
+```json
+{"status":"ok","statuscode":200,"data":{"id":"removed this is the session token","statuscode":"200","status":"PENDING","completed":0,"message":"","timestamp":"20220811185232"}}
+```
 
 ```json
 {
