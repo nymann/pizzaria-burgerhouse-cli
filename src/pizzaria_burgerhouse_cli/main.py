@@ -5,7 +5,6 @@ from typing import Any, Callable
 from bs4 import BeautifulSoup
 from bs4 import ResultSet
 from bs4 import Tag
-from devtools import debug
 import httpx
 import typer
 
@@ -99,7 +98,7 @@ def order_status(username: str, password: str, status_token: str, order_id: int)
     a = PizzariaBurgerhouseCli()
     a.login(username, password)
     new_order = NewOrder(id=order_id, status_token=status_token)
-    debug(a.order_details(order=new_order))
+    typer.echo(a.order_details(order=new_order))
 
 
 @app.command()
@@ -163,9 +162,8 @@ class PizzariaBurgerhouseCli:
         cart_rows = table.find_all(name="tr", attrs={"class": "cart-row"})
         return [CartItem.from_row(row) for row in cart_rows]
 
-    def delete(self, item: CartItem) -> None:
-        response = self.sess.get(item.delete)
-        debug(response.status_code)
+    def delete(self, item: CartItem) -> httpx.Response:
+        return self.sess.get(item.delete)
 
     def _checkout_token(self) -> str:
         text = self.sess.get("/checkout_information.php").text
@@ -212,7 +210,7 @@ class PizzariaBurgerhouseCli:
         for line in lines:
             if "startOrderVerificationProcess" not in line:
                 continue
-            return NewOrder(line=line)
+            return NewOrder.from_line(line=line)
 
         raise Exception("Order status token not found")
 
