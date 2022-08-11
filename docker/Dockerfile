@@ -26,5 +26,5 @@ RUN make install
 FROM base-image AS production-image
 USER non_privileged_user
 ENV PATH="$VENV/bin:$PATH"
-COPY --from=compile-image "$VENV" "$VENV"
+COPY --from=compile-image --chown=non_privileged_user:non_privileged_user "$VENV" "$VENV"
 CMD pizzaria_burgerhouse_cli --help
