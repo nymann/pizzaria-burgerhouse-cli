@@ -1,12 +1,12 @@
-from typing import Union
+import os
 
-from pytest import ExitCode
-from pytest import Session
+import pytest
 
-NO_TEST_RAN_CODE = 5
-SUCCESS = 0
+from pizzaria_burgerhouse_cli.main import PizzariaBurgerhouseCli
 
 
-def pytest_sessionfinish(session: Session, exitstatus: Union[int, ExitCode]) -> None:
-    if exitstatus == NO_TEST_RAN_CODE:
-        session.exitstatus = SUCCESS
+@pytest.fixture
+def auth_cli() -> PizzariaBurgerhouseCli:
+    cli = PizzariaBurgerhouseCli()
+    cli.login(username=os.environ["PIZZA_USER"], password=os.environ["PIZZA_PASS"])
+    return cli
