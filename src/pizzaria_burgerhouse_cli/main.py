@@ -1,10 +1,12 @@
 from dataclasses import dataclass
 from datetime import datetime
+from time import sleep
 from typing import Any, Callable
 
 from bs4 import BeautifulSoup
 from bs4 import ResultSet
 from bs4 import Tag
+from devtools import debug
 import httpx
 import typer
 
@@ -64,8 +66,9 @@ class CartItem:
     @classmethod
     def from_row(cls, row: Tag) -> "CartItem":
         cols: ResultSet = row.find_all(name="td")
+        del_tag = cols[0].find_all(href=True)[0]
         return cls(
-            delete=cols[0].find_all(href=True)[0]["href"],
+            delete=del_tag.get("href"),
             product=cols[1].text.strip(),
             count=text(cols[2], int),
             price=text(cols[3], price_converter),
@@ -73,7 +76,10 @@ class CartItem:
 
 
 def price_converter(price: str) -> float:
-    return float(price.replace(".", "").replace(",", "."))
+    p = price.replace(" DKK", "")
+    p = p.replace(".", "")
+    p = p.replace(",", ".")
+    return float(p)
 
 
 def get_customer_id(col: Tag) -> int:
@@ -102,6 +108,18 @@ def order_status(username: str, password: str, status_token: str, order_id: int)
 
 
 @app.command()
+def cart(username: str, password: str) -> None:
+    a = PizzariaBurgerhouseCli()
+    a.login(username, password)
+    # 1. add something to the checking cart.
+    a.reorder(a.my_ten_last_orders()[0])
+    # 2. check the checking cart
+    order_items = a.check_cart()
+    for item in order_items:
+        typer.echo(f"Item in cart: {item.product} ({item.price})")
+
+
+@app.command()
 def reorder_pizza(username: str, password: str) -> None:
     a = PizzariaBurgerhouseCli()
     a.login(username, password)
@@ -114,8 +132,24 @@ def reorder_pizza(username: str, password: str) -> None:
     # 3. order them
     a.checkout_process()
     a.checkout_finalize()
+    typer.echo("Ordered :-)")
     new_order = a.get_new_order()
-    typer.echo(f"token: {new_order.status_token}, id: {new_order.id}")
+    while True:
+        typer.echo(a.order_details(order=new_order))
+        sleep(5)
+
+
+def is_product_row(tag: Tag) -> bool:
+    attrs = tag.attrs
+    if "class" not in attrs:
+        return False
+    class_names = attrs["class"]
+    if "cart-row" not in class_names:
+        return False
+    for name in class_names:
+        if name.startswith("customizeable"):
+            return False
+    return True
 
 
 class PizzariaBurgerhouseCli:
@@ -159,8 +193,8 @@ class PizzariaBurgerhouseCli:
         text = self.sess.get("/cart.php").text
         soup = BeautifulSoup(markup=text, features="html.parser")
         table: Tag = soup.find_all(name="table", attrs={"id": "cartTableId"})[0]
-        cart_rows = table.find_all(name="tr", attrs={"class": "cart-row"})
-        return [CartItem.from_row(row) for row in cart_rows]
+        row = table.find_all(is_product_row)[0]
+        return [CartItem.from_row(row)]
 
     def delete(self, item: CartItem) -> httpx.Response:
         return self.sess.get(item.delete)
@@ -222,7 +256,8 @@ class PizzariaBurgerhouseCli:
             "orderid": f"{order.id}",
             "timerunning": f"{order.time_running}",
         }
-        response = self.sess.get("/ajax/_ajax.php", params=params)
+        response = self.sess.get("/ajax/_ajax.php", params=params, headers={"X-Requested-With": "XMLHttpRequest"})
+        debug(response.status_code, response.text)
         return response.json()
 
 
