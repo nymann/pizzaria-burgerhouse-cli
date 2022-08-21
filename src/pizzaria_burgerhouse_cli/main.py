@@ -1,16 +1,26 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from time import sleep
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 from bs4 import ResultSet
 from bs4 import Tag
-from devtools import debug
 import httpx
+from rich.console import Console
 import typer
 
 app = typer.Typer()
+c = Console()
+
+
+def get_delivery_time(response: dict) -> Optional[str]:
+    data = response["data"]
+    return data.get("shopDeliverytime")
 
 
 @dataclass
@@ -100,43 +110,51 @@ def text(col: Tag, parse: Callable = str, *args) -> Any:
 
 
 @app.command()
-def order_status(username: str, password: str, status_token: str, order_id: int) -> None:
-    a = PizzariaBurgerhouseCli()
-    a.login(username, password)
-    new_order = NewOrder(id=order_id, status_token=status_token)
-    typer.echo(a.order_details(order=new_order))
-
-
-@app.command()
-def cart(username: str, password: str) -> None:
+def reorder_pizza(username: str, password_file: Path = Path("/home/knj/.cache/pizza")) -> None:
+    with open(password_file, "r") as file:
+        password = file.read().strip("\n")
     a = PizzariaBurgerhouseCli()
     a.login(username, password)
     # 1. add something to the checking cart.
     a.reorder(a.my_ten_last_orders()[0])
     # 2. check the checking cart
-    order_items = a.check_cart()
-    for item in order_items:
-        typer.echo(f"Item in cart: {item.product} ({item.price})")
-
-
-@app.command()
-def reorder_pizza(username: str, password: str) -> None:
-    a = PizzariaBurgerhouseCli()
-    a.login(username, password)
-    # 1. add something to the checking cart.
-    a.reorder(a.my_ten_last_orders()[0])
-    # 2. check the checking cart
-    order_items = a.check_cart()
-    for item in order_items:
-        typer.echo(f"Item in cart: {item.product} ({item.price})")
+    # order_items = a.check_cart()
+    # for item in order_items:
+    #    typer.echo(f"Item in cart: {item.product} ({item.price})")
     # 3. order them
     a.checkout_process()
     a.checkout_finalize()
-    typer.echo("Ordered :-)")
     new_order = a.get_new_order()
-    while True:
-        typer.echo(a.order_details(order=new_order))
-        sleep(5)
+    order_tui_printer(new_order=new_order, a=a)
+
+
+def order_tui_printer(new_order: NewOrder, a: PizzariaBurgerhouseCli):
+    c.print("Waiting for pizzaria to accept the order", end="")
+    delivery: datetime = wait_for_order_to_be_accepted(new_order=new_order, a=a)
+    c.clear()
+    remaining = delivery - current_time()
+    while remaining.total_seconds() > 0:
+        c.print(f"{remaining} until the order is ready for pickup")
+        sleep(1)
+        remaining = delivery - datetime.now(tz=ZoneInfo("Europe/Copenhagen"))
+        c.clear()
+    c.print("Go pickup your pizza :-)")
+
+
+def current_time() -> datetime:
+    return datetime.now(tz=ZoneInfo("Europe/Copenhagen"))
+
+
+def wait_for_order_to_be_accepted(new_order: NewOrder, a: PizzariaBurgerhouseCli) -> datetime:
+    delivery_time = None
+    while delivery_time is None:
+        response = a.order_details(order=new_order)
+        delivery_time = get_delivery_time(response=response)
+        c.print(".", end="")
+        sleep(3)
+    current = current_time()
+    hour, minute = delivery_time.split(":")
+    return current.replace(hour=int(hour), minute=int(minute))
 
 
 def is_product_row(tag: Tag) -> bool:
@@ -257,7 +275,6 @@ class PizzariaBurgerhouseCli:
             "timerunning": f"{order.time_running}",
         }
         response = self.sess.get("/ajax/_ajax.php", params=params, headers={"X-Requested-With": "XMLHttpRequest"})
-        debug(response.status_code, response.text)
         return response.json()
 
 
